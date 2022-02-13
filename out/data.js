@@ -4,7 +4,7 @@ exports.wantsTranslations = exports.getSuggestions = exports.clearAll = exports.
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
-const re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+let re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
 let data;
 const mapHTML = new Map();
@@ -57,23 +57,50 @@ async function parseConfigFilesItem(obj, index) {
     })
         .catch(() => "Could not open " + jsonPath);
 }
+/**
+ * @param obj object to parse
+ * @returns error string or null
+ */
+function parseEscapes(obj) {
+    if (!obj) {
+        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        return null;
+    }
+    if (Array.isArray(obj) && obj.length == 2 &&
+        typeof obj[0] == "string" && obj[0].length > 1 &&
+        typeof obj[1] == "string" && obj[1].length > 1) {
+        re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*");
+        return null;
+    }
+    else {
+        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
+    }
+}
 async function parseConfig() {
     if (!root)
         return null;
     clearAll();
     let config = vscode_1.workspace.getConfiguration("html-translator");
+    // escape chars
+    let escape_err = parseEscapes(config.get("escape-strings"));
     // files
     let files = config.get("files");
     if (!Array.isArray(files))
-        return ["Files in configuration is not an array"];
-    return Promise.all(files.map(parseConfigFilesItem))
+        return escape_err
+            ? ["Files in configuration is not an array", escape_err]
+            : ["Files in configuration is not an array"];
+    // promise result
+    let tasks = files.map(parseConfigFilesItem);
+    return Promise.all(tasks)
         .then(messages => {
         console.log("Config parsed");
         console.log(data);
         let errors = messages.filter(v => !!v);
+        if (escape_err)
+            errors.push(escape_err);
         return errors.length ? errors : null;
     });
-    // languages
 }
 exports.parseConfig = parseConfig;
 function updateTranslationsFrom(doc) {

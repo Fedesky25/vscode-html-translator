@@ -2,7 +2,7 @@ import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind }
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
 
-const re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+let re: RegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPath : "";
 
 type TranslationDataItem = {
@@ -63,22 +63,50 @@ async function parseConfigFilesItem(obj: any, index: number): Promise<null|strin
     .catch(() =>  "Could not open " + jsonPath)
 }
 
+/**
+ * @param obj object to parse
+ * @returns error string or null
+ */
+function parseEscapes(obj: unknown): string | null {
+    if(!obj) {
+        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        return null;
+    }
+    if(
+        Array.isArray(obj) && obj.length == 2 &&
+        typeof obj[0] == "string" && obj[0].length > 1 && 
+        typeof obj[1] == "string" && obj[1].length > 1
+    ) {
+        re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*");
+        return null;
+    } else {
+        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
+    }
+}
 
 export async function parseConfig(): Promise<string[] | null> {
     if(!root) return null;
     clearAll();
     let config = workspace.getConfiguration("html-translator");
+    // escape chars
+    let escape_err = parseEscapes(config.get("escape-strings"));
     // files
     let files = config.get("files");
-    if(!Array.isArray(files)) return ["Files in configuration is not an array"];
-    return Promise.all(files.map(parseConfigFilesItem))
+    if(!Array.isArray(files)) return escape_err 
+        ? ["Files in configuration is not an array", escape_err] 
+        : ["Files in configuration is not an array"];
+    
+    // promise result
+    let tasks = files.map(parseConfigFilesItem)
+    return Promise.all(tasks)
     .then(messages => {
         console.log("Config parsed");
         console.log(data);
         let errors = messages.filter(v => !!v) as string[];
+        if(escape_err) errors.push(escape_err);
         return errors.length ? errors : null;
     });
-    // languages
 }
 
 export function updateTranslationsFrom(doc: TextDocument) {

@@ -5,10 +5,10 @@ import * as vscode from 'vscode';
 import { parseConfig, clearAll, updateTranslationsFrom, getSuggestions } from "./data";
 
 
-var outputChannel = vscode.window.createOutputChannel("html-translator");
+let outputChannel: vscode.OutputChannel;
 
 async function syncWithConfig() {
-	outputChannel.appendLine("Reading configuration...")
+	outputChannel.appendLine("Reading files configuration...")
 	let errs = await parseConfig();
 	if(errs) {
 		errs.forEach(outputChannel.appendLine);
@@ -20,14 +20,13 @@ async function syncWithConfig() {
 }
 
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	// syncWithConfig();
+	outputChannel = vscode.window.createOutputChannel("html-translator");
 
 	const configChange = vscode.workspace.onDidChangeConfiguration((e) => {
 		if(!e.affectsConfiguration("html-translator")) return;
+
 		// if(e.affectsConfiguration("html-translator.languages")) 
 		// if(e.affectsConfiguration("html-translator.files")) 
 		syncWithConfig();
@@ -49,4 +48,6 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+	outputChannel.dispose();
+}

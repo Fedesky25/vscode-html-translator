@@ -5,9 +5,9 @@ exports.deactivate = exports.activate = void 0;
 // Import the module and reference it with the alias vscode in your code below
 const vscode = require("vscode");
 const data_1 = require("./data");
-var outputChannel = vscode.window.createOutputChannel("html-translator");
+let outputChannel;
 async function syncWithConfig() {
-    outputChannel.appendLine("Reading configuration...");
+    outputChannel.appendLine("Reading files configuration...");
     let errs = await (0, data_1.parseConfig)();
     if (errs) {
         errs.forEach(outputChannel.appendLine);
@@ -18,10 +18,8 @@ async function syncWithConfig() {
     }
     outputChannel.appendLine("");
 }
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
 function activate(context) {
-    // syncWithConfig();
+    outputChannel = vscode.window.createOutputChannel("html-translator");
     const configChange = vscode.workspace.onDidChangeConfiguration((e) => {
         if (!e.affectsConfiguration("html-translator"))
             return;
@@ -41,6 +39,8 @@ function activate(context) {
 }
 exports.activate = activate;
 // this method is called when your extension is deactivated
-function deactivate() { }
+function deactivate() {
+    outputChannel.dispose();
+}
 exports.deactivate = deactivate;
 //# sourceMappingURL=extension.js.map
