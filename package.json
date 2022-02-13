@@ -17,7 +17,7 @@
 		"commands": [
 			{
 				"command": "html-translator.start",
-				"title": "Start traslation session"
+				"title": "Start translation session"
 			},
 			{
 				"command": "html-translator.stop",

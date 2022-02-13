@@ -10,6 +10,7 @@ All notable changes to the "html-translator" extension will be documented in thi
 
 * Extension is activated on command
 * All translation json files are loaded
+* Basic feedback and error report in output channel
 
 ## 0.0.1
 

@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.wantsTranslations = exports.getSuggestions = exports.updateTranslationsFrom = exports.unloadTranslationsFor = exports.loadTranslationsFor = exports.syncWithConfiguration = void 0;
+exports.wantsTranslations = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = void 0;
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
-const re = /{{([a-zA-Z._\-]*)}}/;
-const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : null;
+const re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
 let data;
 const mapHTML = new Map();
 const mapJSON = new Map();
@@ -31,92 +31,82 @@ function parseTranslationDocumentText(text) {
     // console.log("Parsed", res);
     return res.length ? res : null;
 }
-function syncWithConfiguration() {
+async function parseConfigFilesItem(obj, index) {
+    if (!obj || typeof obj !== "object")
+        return "File #" + index + " is not an object";
+    if (typeof obj.source !== "string" || typeof obj.texts !== "string")
+        return "Files pair #" + index + " must contain string values for source and texts";
+    let htmlPath = (0, path_1.join)(root, obj.source);
+    try {
+        await (0, promises_1.access)(htmlPath);
+    }
+    catch {
+        return "Could not open " + htmlPath;
+    }
+    let jsonPath = (0, path_1.join)(root, obj.texts);
+    return await (0, promises_1.readFile)(jsonPath, { encoding: "utf-8" })
+        .then(parseTranslationDocumentText)
+        .then(keys => {
+        if (!keys)
+            return "Translations invalid format at " + jsonPath;
+        let item = { htmlPath, jsonPath, keys, valid: true };
+        mapHTML.set(htmlPath, item);
+        mapJSON.set(jsonPath, item);
+        data.push(item);
+        return null;
+    })
+        .catch(() => "Could not open " + jsonPath);
+}
+async function parseConfig() {
     if (!root)
-        return;
-    data = [];
-    mapHTML.clear();
-    mapJSON.clear();
-    var f;
-    var item;
-    var htmlPath;
-    var jsonPath;
+        return null;
+    clearAll();
     let config = vscode_1.workspace.getConfiguration("html-translator");
     // files
     let files = config.get("files");
     if (!Array.isArray(files))
-        return;
-    let errors = [];
-    for (var i = 0; i < files.length; i++) {
-        f = files[i];
-        if (f && typeof f === "object" && typeof f.source === "string" && typeof f.texts === "string") {
-            htmlPath = (0, path_1.join)(root, f.source);
-            jsonPath = (0, path_1.join)(root, f.texts);
-            Promise.all([(0, promises_1.access)(htmlPath), (0, promises_1.access)(jsonPath)])
-                .then(() => {
-                item = { htmlPath, jsonPath, translation: null };
-                mapHTML.set(htmlPath, item);
-                mapJSON.set(jsonPath, item);
-                data.push(item);
-            })
-                .catch(() => {
-                vscode_1.window.showErrorMessage("Could not access some files");
-            });
-        }
-        else {
-            errors.push(i);
-        }
-    }
-    if (errors.length) {
-        vscode_1.window.showErrorMessage(`Invalid files configuration of elements of index ${errors.join(", ")}`);
-        errors.length = 0;
-    }
+        return ["Files in configuration is not an array"];
+    return Promise.all(files.map(parseConfigFilesItem))
+        .then(messages => {
+        console.log("Config parsed");
+        console.log(data);
+        let errors = messages.filter(v => !!v);
+        return errors.length ? errors : null;
+    });
     // languages
 }
-exports.syncWithConfiguration = syncWithConfiguration;
-function loadTranslationsFor(doc) {
-    const item = mapHTML.get(doc.uri.fsPath);
-    if (!item)
-        return;
-    if (item.translation)
-        return;
-    (0, promises_1.readFile)(item.jsonPath, { encoding: "utf-8" })
-        .then(txt => {
-        const res = parseTranslationDocumentText(txt);
-        item.translation = res;
-        console.log("Loaded " + item.jsonPath);
-    })
-        .catch(err => {
-        console.error("Could not open file " + item.jsonPath);
-        console.error(err);
-    });
-}
-exports.loadTranslationsFor = loadTranslationsFor;
-function unloadTranslationsFor(doc) {
-    const item = mapHTML.get(doc.uri.fsPath);
-    if (!item)
-        return;
-    item.translation = null;
-}
-exports.unloadTranslationsFor = unloadTranslationsFor;
+exports.parseConfig = parseConfig;
 function updateTranslationsFrom(doc) {
     const item = mapJSON.get(doc.uri.fsPath);
     if (!item)
         return;
     const res = parseTranslationDocumentText(doc.getText());
-    item.translation = res;
+    if (res) {
+        item.keys = res;
+        item.valid = true;
+    }
+    else {
+        item.valid = false;
+    }
     console.log("Updated " + item.jsonPath);
 }
 exports.updateTranslationsFrom = updateTranslationsFrom;
+function clearAll() {
+    mapHTML.clear();
+    mapJSON.clear();
+    data = [];
+    console.log("Everything cleared");
+}
+exports.clearAll = clearAll;
 function getSuggestions(doc, pos) {
     const item = mapHTML.get(doc.uri.fsPath);
-    if (!item || !item.translation)
+    if (!item || !item.valid)
         return null;
     const exp = re.exec(doc.lineAt(pos.line).text);
     if (!exp)
         return null;
     let written = exp[1];
-    return item.translation
+    return item.keys
         .filter(v => v.startsWith(written))
         .map(v => new vscode_1.CompletionItem(v, vscode_1.CompletionItemKind.Constant));
     // var at: any = item.translation;

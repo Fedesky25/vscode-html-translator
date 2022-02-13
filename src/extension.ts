@@ -5,13 +5,18 @@ import * as vscode from 'vscode';
 import { parseConfig, clearAll, updateTranslationsFrom, getSuggestions } from "./data";
 
 
-var outputChannel: vscode.OutputChannel;
+var outputChannel = vscode.window.createOutputChannel("html-translator");
 
 async function syncWithConfig() {
+	outputChannel.appendLine("Reading configuration...")
 	let errs = await parseConfig();
-	if(!errs) return;
-	if(!outputChannel) outputChannel = vscode.window.createOutputChannel("html-translator");
-	errs.forEach(outputChannel.appendLine);
+	if(errs) {
+		errs.forEach(outputChannel.appendLine);
+		vscode.window.showErrorMessage("One or more thing went wrong", "See errors").then(v => v && outputChannel.show());
+	} else {
+		outputChannel.appendLine("Everything is all good to go");
+	}
+	outputChannel.appendLine("");
 }
 
 

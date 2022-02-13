@@ -45,15 +45,15 @@ function parseTranslationDocumentText(text: string): null | string[] {
 
 async function parseConfigFilesItem(obj: any, index: number): Promise<null|string> {
     if(!obj || typeof obj !== "object") return "File #" + index + " is not an object";
-    if(typeof obj.source !== "string" || typeof obj.texts !== "string") return "File #" + index + " must containt string values for source and texts";
+    if(typeof obj.source !== "string" || typeof obj.texts !== "string") return "Files pair #" + index + " must contain string values for source and texts";
     let htmlPath = joinPath(root, obj.source);
     try { await access(htmlPath) } 
-    catch { return htmlPath + " is not accessbile" }
+    catch { return "Could not open " + htmlPath }
     let jsonPath = joinPath(root, obj.texts);
     return await readFile(jsonPath, {encoding: "utf-8"})
     .then(parseTranslationDocumentText)
     .then(keys => {
-        if(!keys) return jsonPath + " has invalid format";
+        if(!keys) return "Translations invalid format at " + jsonPath;
         let item = { htmlPath, jsonPath, keys, valid: true };
         mapHTML.set(htmlPath, item);
         mapJSON.set(jsonPath, item);
@@ -74,6 +74,7 @@ export async function parseConfig(): Promise<string[] | null> {
     return Promise.all(files.map(parseConfigFilesItem))
     .then(messages => {
         console.log("Config parsed");
+        console.log(data);
         let errors = messages.filter(v => !!v) as string[];
         return errors.length ? errors : null;
     });
