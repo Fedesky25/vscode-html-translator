@@ -10,8 +10,7 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCommand:html-translator.start",
-		"onLanguage:html"
+		"onCommand:html-translator.start"
 	],
 	"main": "./out/extension.js",
 	"contributes": {

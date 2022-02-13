@@ -1,14 +1,15 @@
-import { TextDocument, Position, CompletionItem, workspace, window, CompletionItemKind } from "vscode";
+import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind } from "vscode";
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
 
-const re = /{{([a-zA-Z._\-]*)}}/;
-const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPath : null;
+const re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPath : "";
 
 type TranslationDataItem = {
     htmlPath: string,
     jsonPath: string,
-    translation: null | string[]
+    keys: string[],
+    valid: boolean
 }
 
 let data: TranslationDataItem[];
@@ -41,86 +42,72 @@ function parseTranslationDocumentText(text: string): null | string[] {
     return res.length ? res : null;
 }
 
-export function syncWithConfiguration() {
-    if(!root) return;
-    data = [];
-    mapHTML.clear();
-    mapJSON.clear();
-    var f;
-    var item: TranslationDataItem;
-    var htmlPath: string;
-    var jsonPath: string;
-    let config = workspace.getConfiguration("html-translator");
 
+async function parseConfigFilesItem(obj: any, index: number): Promise<null|string> {
+    if(!obj || typeof obj !== "object") return "File #" + index + " is not an object";
+    if(typeof obj.source !== "string" || typeof obj.texts !== "string") return "File #" + index + " must containt string values for source and texts";
+    let htmlPath = joinPath(root, obj.source);
+    try { await access(htmlPath) } 
+    catch { return htmlPath + " is not accessbile" }
+    let jsonPath = joinPath(root, obj.texts);
+    return await readFile(jsonPath, {encoding: "utf-8"})
+    .then(parseTranslationDocumentText)
+    .then(keys => {
+        if(!keys) return jsonPath + " has invalid format";
+        let item = { htmlPath, jsonPath, keys, valid: true };
+        mapHTML.set(htmlPath, item);
+        mapJSON.set(jsonPath, item);
+        data.push(item);
+        return null;
+    })
+    .catch(() =>  "Could not open " + jsonPath)
+}
+
+
+export async function parseConfig(): Promise<string[] | null> {
+    if(!root) return null;
+    clearAll();
+    let config = workspace.getConfiguration("html-translator");
     // files
     let files = config.get("files");
-    if(!Array.isArray(files)) return;
-    let errors: number[] = [];
-    for(var i=0; i<files.length; i++) {
-        f = files[i];
-        if(f && typeof f === "object" && typeof f.source === "string" && typeof f.texts === "string") {
-            htmlPath = joinPath(root, f.source);
-            jsonPath = joinPath(root, f.texts);
-            Promise.all([access(htmlPath), access(jsonPath)])
-            .then(() => {
-                item = { htmlPath, jsonPath, translation: null };
-                mapHTML.set(htmlPath, item);
-                mapJSON.set(jsonPath, item);
-                data.push(item);
-            })
-            .catch(() => {
-                window.showErrorMessage("Could not access some files");
-            })
-        } else {
-            errors.push(i);
-        }
-    }
-    if(errors.length) {
-        window.showErrorMessage(`Invalid files configuration of elements of index ${errors.join(", ")}`);
-        errors.length = 0;
-    }
-
-    // languages
-}
-
-export function loadTranslationsFor(doc: TextDocument) {
-    const item = mapHTML.get(doc.uri.fsPath);
-    if(!item) return;
-    if(item.translation) return;
-    readFile(item.jsonPath, {encoding: "utf-8"})
-    .then(txt => {
-        const res = parseTranslationDocumentText(txt);
-        item.translation = res;
-        console.log("Loaded " + item.jsonPath);
-    })
-    .catch(err => {
-        console.error("Could not open file " + item.jsonPath);
-        console.error(err);
+    if(!Array.isArray(files)) return ["Files in configuration is not an array"];
+    return Promise.all(files.map(parseConfigFilesItem))
+    .then(messages => {
+        console.log("Config parsed");
+        let errors = messages.filter(v => !!v) as string[];
+        return errors.length ? errors : null;
     });
-}
-
-export function unloadTranslationsFor(doc: TextDocument) {
-    const item = mapHTML.get(doc.uri.fsPath);
-    if(!item) return;
-    item.translation = null;
+    // languages
 }
 
 export function updateTranslationsFrom(doc: TextDocument) {
     const item = mapJSON.get(doc.uri.fsPath);
     if(!item) return;
     const res = parseTranslationDocumentText(doc.getText());
-    item.translation = res;
+    if(res) {
+        item.keys = res;
+        item.valid = true;
+    } else {
+        item.valid = false;
+    }
     console.log("Updated " + item.jsonPath);
+}
+
+export function clearAll() {
+    mapHTML.clear();
+    mapJSON.clear();
+    data = [];
+    console.log("Everything cleared");
 }
 
 export function getSuggestions(doc: TextDocument, pos: Position): null|CompletionItem[] {
     const item = mapHTML.get(doc.uri.fsPath);
-    if(!item || !item.translation) return null;
+    if(!item || !item.valid) return null;
     const exp = re.exec(doc.lineAt(pos.line).text);
     if(!exp) return null;
 
     let written: string = exp[1];
-    return item.translation
+    return item.keys
     .filter(v => v.startsWith(written))
     .map(v => new CompletionItem(v, CompletionItemKind.Constant));
 
