@@ -1,8 +1,11 @@
-# html-translator
+# vscode html-translator extension
 
-VScode extension that translates html files for multilingual static sites.
+VScode extension which helps the developer writing down multi-lingual version of static html files.
+Eventually it will provide also a compilation of the files.
 
 ## Features
+
+Instead of hard-writing the text in html files, this extesion allows you to specify all the translated text in a separate json file and to refer to those strings in the paired html file (with code completition) inside escaped sections. 
 
 <!-- Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
 
@@ -14,7 +17,9 @@ For example if there is an image subfolder under your extension project workspac
 
 ### Work in progress
 
-Dynamic 
+* Custom escape characters
+* Hhtml file compilation
+* Some way to refer to a language name and identifier
 
 <!-- ## Requirements
 
@@ -30,7 +35,7 @@ If you have any requirements or dependencies, add a section describing those and
 
 The behaviour of this extension depends on some settings.
 
-* `html-translator.files`: array of objects specifying the source html file and the json file containing all translation.
+* `html-translator.files`: array of objects specifying source html and translated texts json files.
 * `html-translator.languages`: array of string language identifiers for which translate.
 * `html-translato.escape-strings`: pair of opening and closing strings used to escape from regular html and provide suggestions; default is ["{{", "}}"].
 

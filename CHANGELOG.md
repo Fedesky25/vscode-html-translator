@@ -11,8 +11,6 @@ All notable changes to the "html-translator" extension will be documented in thi
 * Extension is activated on command
 * All translation json files are loaded
 
-
-
 ## 0.0.1
 
 * Basic code completition on targeted html files
