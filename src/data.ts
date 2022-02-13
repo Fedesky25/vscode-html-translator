@@ -2,7 +2,8 @@ import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind }
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
 
-let re: RegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+let re: RegExp;
+const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPath : "";
 
 type TranslationDataItem = {
@@ -69,7 +70,7 @@ async function parseConfigFilesItem(obj: any, index: number): Promise<null|strin
  */
 function parseEscapes(obj: unknown): string | null {
     if(!obj) {
-        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        re = defaultRegExp;
         return null;
     }
     if(
@@ -77,10 +78,17 @@ function parseEscapes(obj: unknown): string | null {
         typeof obj[0] == "string" && obj[0].length > 1 && 
         typeof obj[1] == "string" && obj[1].length > 1
     ) {
-        re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*");
-        return null;
+        try {
+            re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
+            return null;
+        }
+        catch(err) {
+            re = defaultRegExp;
+            console.error(err);
+            return "Error at regular expression creation: rolling back to default {{ }}";
+        }
     } else {
-        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        re = defaultRegExp;
         return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
     }
 }
@@ -101,8 +109,8 @@ export async function parseConfig(): Promise<string[] | null> {
     let tasks = files.map(parseConfigFilesItem)
     return Promise.all(tasks)
     .then(messages => {
-        console.log("Config parsed");
-        console.log(data);
+        console.log("Configuration parsed");
+        // console.log(data);
         let errors = messages.filter(v => !!v) as string[];
         if(escape_err) errors.push(escape_err);
         return errors.length ? errors : null;

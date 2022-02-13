@@ -4,7 +4,8 @@ exports.wantsTranslations = exports.getSuggestions = exports.clearAll = exports.
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
-let re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+let re;
+const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
 let data;
 const mapHTML = new Map();
@@ -63,17 +64,24 @@ async function parseConfigFilesItem(obj, index) {
  */
 function parseEscapes(obj) {
     if (!obj) {
-        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        re = defaultRegExp;
         return null;
     }
     if (Array.isArray(obj) && obj.length == 2 &&
         typeof obj[0] == "string" && obj[0].length > 1 &&
         typeof obj[1] == "string" && obj[1].length > 1) {
-        re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*");
-        return null;
+        try {
+            re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
+            return null;
+        }
+        catch (err) {
+            re = defaultRegExp;
+            console.error(err);
+            return "Error at regular expression creation: rolling back to default {{ }}";
+        }
     }
     else {
-        re = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+        re = defaultRegExp;
         return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
     }
 }
@@ -94,8 +102,8 @@ async function parseConfig() {
     let tasks = files.map(parseConfigFilesItem);
     return Promise.all(tasks)
         .then(messages => {
-        console.log("Config parsed");
-        console.log(data);
+        console.log("Configuration parsed");
+        // console.log(data);
         let errors = messages.filter(v => !!v);
         if (escape_err)
             errors.push(escape_err);

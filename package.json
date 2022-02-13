@@ -72,7 +72,7 @@
 						"required": ["source", "texts"]
 					}
 				},
-				"html-tranlator.escape-strings": {
+				"html-translator.escape-strings": {
 					"scope": "resource",
 					"title": "Escape characters pair in html files",
 					"description": "Pair of strings used as escaping from regular HTML into keys of text translations. Default is `{{` and `}}`.",
@@ -81,7 +81,7 @@
 					"maxItems": 2,
 					"items": {
 						"type": "string",
-						"minLength": 1
+						"minLength": 2
 					},
 					"default": ["{{", "}}"]
 				}
