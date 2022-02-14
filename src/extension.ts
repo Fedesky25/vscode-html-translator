@@ -22,7 +22,7 @@ async function syncWithConfig() {
 
 export function activate(context: vscode.ExtensionContext) {
 
-	outputChannel = vscode.window.createOutputChannel("html-translator");
+	outputChannel = vscode.window.createOutputChannel("HTML translator");
 
 	const configChange = vscode.workspace.onDidChangeConfiguration((e) => {
 		if(!e.affectsConfiguration("html-translator")) return;

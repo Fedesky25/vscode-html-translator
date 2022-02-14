@@ -2,7 +2,7 @@
   "name": "html-translator",
 	"displayName": "html-translator",
 	"description": "",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"engines": {
 		"vscode": "^1.64.0"
 	},
@@ -62,11 +62,15 @@
 						"properties": {
 							"source": {
 								"type": "string",
-								"description": "relative url to source html file"
+								"description": "path to source html file"
 							},
 							"texts": {
 								"type": "string",
-								"description": "relative url to json file with trsnalstions"
+								"description": "path to json file with translations"
+							},
+							"output": {
+								"type": "string",
+								"description": "path to output location"
 							}
 						},
 						"required": ["source", "texts"]

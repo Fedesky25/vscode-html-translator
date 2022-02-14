@@ -2,6 +2,8 @@ import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind }
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
 
+let opening = "{{";
+let closing = "}}";
 let re: RegExp;
 const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPath : "";
@@ -71,6 +73,8 @@ async function parseConfigFilesItem(obj: any, index: number): Promise<null|strin
 function parseEscapes(obj: unknown): string | null {
     if(!obj) {
         re = defaultRegExp;
+        opening = "{{";
+        closing = "}}";
         return null;
     }
     if(
@@ -80,6 +84,8 @@ function parseEscapes(obj: unknown): string | null {
     ) {
         try {
             re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
+            opening = obj[0];
+            closing = obj[1];
             return null;
         }
         catch(err) {
@@ -89,10 +95,16 @@ function parseEscapes(obj: unknown): string | null {
         }
     } else {
         re = defaultRegExp;
+        opening = "{{";
+        closing = "}}";
         return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
     }
 }
 
+/**
+ * Parses the extension configuration
+ * @returns promise that resolves to a list of error messages, is any
+ */
 export async function parseConfig(): Promise<string[] | null> {
     if(!root) return null;
     clearAll();
@@ -137,30 +149,44 @@ export function clearAll() {
     console.log("Everything cleared");
 }
 
+function getWritten(line: string, col: number): string | null {
+    let len: number;
+    var i: number = col;
+    var j: number;
+    while(line[i] === " ") i++;
+    len = closing.length;
+    for(j=0; j<len; j++) if(line[i+j] !== closing[j]) return null;
+    i = col;
+    do {
+        i--;
+        j = line.charCodeAt(i);
+    } while (
+        (j > 96 && j < 123) || // lowercase letters
+        (j > 64 && j < 91) || // uppercase letters
+        (j > 47 && j < 58) || // numbers
+        j === 46 || j === 95 // . _
+    );
+    const res = line.substring(i+1,col);
+    while(line[i] === " ") i--;
+    if(i < 2) return null;
+    len = opening.length;
+    for(j=0; j<len; j++) if(line[i+1-len+j] !== opening[j]) return null;
+    return res;
+}
+
 export function getSuggestions(doc: TextDocument, pos: Position): null|CompletionItem[] {
     const item = mapHTML.get(doc.uri.fsPath);
     if(!item || !item.valid) return null;
-    const exp = re.exec(doc.lineAt(pos.line).text);
-    if(!exp) return null;
+    const written = getWritten(doc.lineAt(pos.line).text, pos.character);
+    if(written === null) return null;
 
-    let written: string = exp[1];
-    return item.keys
-    .filter(v => v.startsWith(written))
-    .map(v => new CompletionItem(v, CompletionItemKind.Constant));
+    const dot_index = written.lastIndexOf(".");
+    const matches = item.keys.filter(v => v.startsWith(written));
+    if(!matches.length) return null;        
 
-    // var at: any = item.translation;
-    // let pieces = written.split('.');
-    // console.log(pieces);
-    // let last = pieces[pieces.length-1];
-    // for(var i=0; i<pieces.length-1; i++) {
-    //     at = at[pieces[i]];
-    //     if(!at) return null;
-    // }
-    // const res = Object.keys(at)
-    // .filter(k => k.startsWith(last))
-    // .map(v => new CompletionItem(v, CompletionItemKind.Constant))
-
-    // return res;
+    return dot_index === -1
+    ? matches.map(v => new CompletionItem(v, CompletionItemKind.EnumMember))
+    : matches.map(v => new CompletionItem(v.substring(dot_index+1), CompletionItemKind.EnumMember));
 }
 
 export function wantsTranslations(doc: TextDocument) {
