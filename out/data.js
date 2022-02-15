@@ -4,6 +4,7 @@ exports.wantsTranslations = exports.getSuggestions = exports.clearAll = exports.
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
+const utils_1 = require("./utils");
 let opening = "{{";
 let closing = "}}";
 let re;
@@ -74,6 +75,13 @@ function parseEscapes(obj) {
     if (Array.isArray(obj) && obj.length == 2 &&
         typeof obj[0] == "string" && obj[0].length > 1 &&
         typeof obj[1] == "string" && obj[1].length > 1) {
+        if ((0, utils_1.isLetterOrDigit)(obj[0].charCodeAt(obj.length - 1))
+            || (0, utils_1.isLetterOrDigit)(obj[1].charCodeAt(0))) {
+            re = defaultRegExp;
+            opening = "{{";
+            closing = "}}";
+            return "Invalid escape strings: inner-most character must not be letter or digits";
+        }
         try {
             re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
             opening = obj[0];
@@ -145,50 +153,40 @@ function clearAll() {
     console.log("Everything cleared");
 }
 exports.clearAll = clearAll;
-function getWritten(line, col) {
-    let len;
-    var i = col;
-    var j;
-    while (line[i] === " ")
-        i++;
-    len = closing.length;
-    for (j = 0; j < len; j++)
-        if (line[i + j] !== closing[j])
-            return null;
-    i = col;
-    do {
-        i--;
-        j = line.charCodeAt(i);
-    } while ((j > 96 && j < 123) || // lowercase letters
-        (j > 64 && j < 91) || // uppercase letters
-        (j > 47 && j < 58) || // numbers
-        j === 46 || j === 95 // . _
-    );
-    const res = line.substring(i + 1, col);
-    while (line[i] === " ")
-        i--;
-    if (i < 2)
-        return null;
-    len = opening.length;
-    for (j = 0; j < len; j++)
-        if (line[i + 1 - len + j] !== opening[j])
-            return null;
-    return res;
-}
+const allowedInEscape = (0, utils_1.charCodesOf)("._");
+const allowedInUrl = (0, utils_1.charCodesOf)("./_ #$");
 function getSuggestions(doc, pos) {
     const item = mapHTML.get(doc.uri.fsPath);
     if (!item || !item.valid)
         return null;
-    const written = getWritten(doc.lineAt(pos.line).text, pos.character);
-    if (written === null)
-        return null;
-    const dot_index = written.lastIndexOf(".");
-    const matches = item.keys.filter(v => v.startsWith(written));
-    if (!matches.length)
-        return null;
-    return dot_index === -1
-        ? matches.map(v => new vscode_1.CompletionItem(v, vscode_1.CompletionItemKind.EnumMember))
-        : matches.map(v => new vscode_1.CompletionItem(v.substring(dot_index + 1), vscode_1.CompletionItemKind.EnumMember));
+    const line = doc.lineAt(pos.line).text;
+    const col = pos.character;
+    if ((0, utils_1.matchStringAfter)(closing, line, (0, utils_1.firstNonSpace)(line, col))) {
+        const s = (0, utils_1.getTypedBefore)(line, col, allowedInEscape);
+        if (!s || !(0, utils_1.matchStringBefore)(opening, line, (0, utils_1.lastNonSpace)(line, col - s.length - 1)))
+            return null;
+        console.log("Load suggestions");
+        const dot_index = s.lastIndexOf(".");
+        const matches = item.keys.filter(v => v.startsWith(s));
+        if (!matches.length)
+            return null;
+        return dot_index === -1
+            ? matches.map(v => new vscode_1.CompletionItem(v, vscode_1.CompletionItemKind.EnumMember))
+            : matches.map(v => new vscode_1.CompletionItem(v.substring(dot_index + 1), vscode_1.CompletionItemKind.EnumMember));
+    }
+    else {
+        console.log("Suggest snippet");
+        const ns = (0, utils_1.lastNonSpace)(line, col - 1);
+        console.log(ns, col);
+        if (!(0, utils_1.matchStringBefore)(opening, line, ns))
+            return null;
+        const item = new vscode_1.CompletionItem("translated text reference", vscode_1.CompletionItemKind.Snippet);
+        if (ns !== col - 1)
+            item.range = new vscode_1.Range(pos.line, ns, pos.line, col + 1);
+        //item.range = new Range(pos.line, ns-opening.length, pos.line, col);
+        item.insertText = new vscode_1.SnippetString("${0:textID}" + closing);
+        return [item];
+    }
 }
 exports.getSuggestions = getSuggestions;
 function wantsTranslations(doc) {

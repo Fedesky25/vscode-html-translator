@@ -1,7 +1,12 @@
-import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind, Uri } from "vscode";
+import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind, SnippetString, Range } from "vscode";
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
-import { getTyped, charCodesOf, isLetterOrDigit } from './utils';
+import { 
+    charCodesOf, isLetterOrDigit,
+    firstNonSpace, lastNonSpace,
+    matchStringBefore, matchStringAfter,
+    getTypedBefore,
+} from './utils';
 
 let opening = "{{";
 let closing = "}}";
@@ -162,23 +167,38 @@ export function clearAll() {
 
 
 const allowedInEscape = charCodesOf("._");
-const allowedInUrl = charCodesOf("./_#$");
+const allowedInUrl = charCodesOf("./_ #$");
 
 export function getSuggestions(doc: TextDocument, pos: Position): null|CompletionItem[] {
     const item = mapHTML.get(doc.uri.fsPath);
     if(!item || !item.valid) return null;
     const line = doc.lineAt(pos.line).text;
+    const col = pos.character;
 
-    const written = getTyped(line, pos.character, opening, closing, allowedInEscape);
-    if(written === null) return null;
-
-    const dot_index = written.lastIndexOf(".");
-    const matches = item.keys.filter(v => v.startsWith(written));
-    if(!matches.length) return null;        
-
-    return dot_index === -1
-    ? matches.map(v => new CompletionItem(v, CompletionItemKind.EnumMember))
-    : matches.map(v => new CompletionItem(v.substring(dot_index+1), CompletionItemKind.EnumMember));
+    if(matchStringAfter(closing, line, firstNonSpace(line,col)))
+    {
+        const s = getTypedBefore(line, col, allowedInEscape);
+        if(!s || !matchStringBefore(opening, line, lastNonSpace(line, col-s.length-1))) return null;
+        console.log("Load suggestions");
+        const dot_index = s.lastIndexOf(".");
+        const matches = item.keys.filter(v => v.startsWith(s));
+        if(!matches.length) return null;
+        return dot_index === -1
+        ? matches.map(v => new CompletionItem(v, CompletionItemKind.EnumMember))
+        : matches.map(v => new CompletionItem(v.substring(dot_index+1), CompletionItemKind.EnumMember));  
+    }
+    else
+    {
+        console.log("Suggest snippet");
+        const ns = lastNonSpace(line, col-1);
+        console.log(ns,col);
+        if(!matchStringBefore(opening, line, ns)) return null;
+        const item = new CompletionItem("translated text reference", CompletionItemKind.Snippet);
+        if(ns !== col - 1) item.range = new Range(pos.line, ns, pos.line, col+1);
+        //item.range = new Range(pos.line, ns-opening.length, pos.line, col);
+        item.insertText = new SnippetString("${0:textID}"+closing);
+        return [item];
+    }
 }
 
 export function wantsTranslations(doc: TextDocument) {

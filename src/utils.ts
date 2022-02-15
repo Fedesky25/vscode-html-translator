@@ -11,20 +11,67 @@ export function isLetterOrDigit(code: number) {
     (code > 47 && code < 58); // digits
 }
 
-export function getTyped(line: string, col: number, opening: string, closing: string, allowedCodes: number[]): string | null {
-    var i: number;
-    var j: number;
-    var len: number;
-    i = col;
-    while(line[i] === " ") i++;
-    len = closing.length;
-    for(j=0; j<len; j++) if(line[i+j] !== closing[j]) return null;
-    i = col-1;
-    j = line.charCodeAt(i);
-    while(isLetterOrDigit(j) || allowedCodes.includes(j)) j = line.charCodeAt(--i);
-    const res = line.substring(i+1, col);
-    while(line[i] === " ") i--;
-    len = opening.length;
-    for(j=0; j<len; j++) if(line[i-j] !== opening[len-1-j]) return null;
-    return res;
+/**
+ * Returns the index of the first non-white character after pos
+ * @param str string
+ * @param pos initial position
+ * @returns 
+ */
+export function firstNonSpace(str: string, pos: number) {
+    while(str[pos] === " ") pos++;
+    return pos;
+}
+
+/**
+ * Returns the index of the last non-white charcter before pos
+ * @param str string
+ * @param pos last position
+ * @returns 
+ */
+export function lastNonSpace(str: string, pos: number) {
+    while(str[pos] === " ") pos--;
+    return pos;
+}
+
+/**
+ * Checks whether the opening string is present before a index
+ * @param what what string to match
+ * @param test test string on which apply the comparison
+ * @param pos starting index in the test string 
+ * @returns 
+ */
+export function matchStringBefore(what: string, test: string, pos: number): boolean {
+    const len = what.length;
+    for(var i=0; i<len; i++)
+        if(test[pos+i-len+1] !== what[i]) return false;
+    return true;
+}
+
+/**
+ * Checks whether the closing string is present after a index
+ * @param what what string to match
+ * @param test test string on which apply the comparison
+ * @param pos starting index in the test string 
+ * @returns 
+ */
+export function matchStringAfter(what: string, test: string, col: number): boolean {
+    const len = what.length;
+    for(var i=0; i<len; i++)
+        if(test[col+i] !== what[i]) return false;
+    return true;
+}
+
+/**
+ * Retrieves the string that precedes the index
+ * @param line line of text
+ * @param col column index
+ * @param allowedCodes array of allowed codes
+ * @returns 
+ */
+export function getTypedBefore(line: string, col: number, allowedCodes: number[]): string {
+    var code: number;
+    var i: number = col
+    do { code = line.charCodeAt(--i) }
+    while (isLetterOrDigit(code) || allowedCodes.includes(code));
+    return line.substring(i+1, col);
 }
