@@ -10,9 +10,11 @@ import {
 
 let opening = "{{";
 let closing = "}}";
-let re: RegExp;
 const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPath : "";
+
+enum CODES { empty, nonexistent };
+const SOURCE = "HTML translator";
 
 type TranslationDataItem = {
     htmlPath: string,
@@ -80,7 +82,6 @@ async function parseConfigFilesItem(obj: any, index: number): Promise<null|strin
  */
 function parseEscapes(obj: unknown): string | null {
     if(!obj) {
-        re = defaultRegExp;
         opening = "{{";
         closing = "}}";
         return null;
@@ -94,24 +95,14 @@ function parseEscapes(obj: unknown): string | null {
             isLetterOrDigit(obj[0].charCodeAt(obj.length-1))
             || isLetterOrDigit(obj[1].charCodeAt(0))
         ) {
-            re = defaultRegExp;
             opening = "{{";
             closing = "}}";
             return "Invalid escape strings: inner-most character must not be letter or digits";
         }
-        try {
-            re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
-            opening = obj[0];
-            closing = obj[1];
-            return null;
-        }
-        catch(err) {
-            re = defaultRegExp;
-            console.error(err);
-            return "Error at regular expression creation: rolling back to default {{ }}";
-        }
+        opening = obj[0];
+        closing = obj[1];
+        return null;
     } else {
-        re = defaultRegExp;
         opening = "{{";
         closing = "}}";
         return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
@@ -204,26 +195,45 @@ export function getSuggestions(doc: TextDocument, pos: Position): null|Completio
 
 export function diagnose(doc: TextDocument, collection: DiagnosticCollection) {
     const item = mapHTML.get(doc.uri.fsPath);
-    if(!item || !item.valid) return null;
+    if(!item || !item.valid) return;
     let line: string;
     let site: number;
-    let end: number;
+    let start: number;
+    let stop: number;
     let piece: string;
     let diagnostic: Diagnostic;
     let diagnostics: Diagnostic[] = [];
+    const ol = opening.length;
+    const cl = closing.length;
     for(var i=0; i<doc.lineCount; i++) {
-        line = doc.lineAt(i).text;
-        while((site = line.indexOf(opening)) !== -1) {
-            site = firstNonSpace(line, site);
-            end = firstNonTyping(line, site, allowedInEscape);
-            if(!matchStringAfter(closing, line, firstNonSpace(line, end))) continue;
-            piece = line.substring(site, end);
+        site = 0;
+        line = doc.lineAt(i).text; 
+        while((site = line.indexOf(opening,site)) !== -1) {
+            start = firstNonSpace(line, site+ol);
+            stop = firstNonTyping(line, start, allowedInEscape);
+            site = firstNonSpace(line, stop);
+            if(!matchStringAfter(closing, line, site)) continue;
+            site += cl;
+            if(start == stop) {
+                diagnostic = new Diagnostic(
+                    new Range(i,start,i,stop),
+                    "No translated text specified",
+                    DiagnosticSeverity.Warning
+                );
+                diagnostic.source = SOURCE;
+                diagnostic.code = CODES.empty;
+                diagnostics.push(diagnostic);
+                continue;
+            }
+            piece = line.substring(start, stop);
             if(item.keys.includes(piece)) continue;
             diagnostic = new Diagnostic(
-                new Range(i,site,i,end),
-                "This trsnalted text does not exist",
+                new Range(i,start,i,stop),
+                `"${piece}" is not a valid translated text`,
                 DiagnosticSeverity.Warning
             );
+            diagnostic.source = SOURCE;
+            diagnostic.code = CODES.nonexistent;
             diagnostics.push(diagnostic);
         }
     }

@@ -7,9 +7,15 @@ const promises_1 = require("fs/promises");
 const string_utils_1 = require("./string-utils");
 let opening = "{{";
 let closing = "}}";
-let re;
 const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
+var CODES;
+(function (CODES) {
+    CODES[CODES["empty"] = 0] = "empty";
+    CODES[CODES["nonexistent"] = 1] = "nonexistent";
+})(CODES || (CODES = {}));
+;
+const SOURCE = "HTML translator";
 let langs;
 let data;
 const mapHTML = new Map();
@@ -68,7 +74,6 @@ async function parseConfigFilesItem(obj, index) {
  */
 function parseEscapes(obj) {
     if (!obj) {
-        re = defaultRegExp;
         opening = "{{";
         closing = "}}";
         return null;
@@ -78,25 +83,15 @@ function parseEscapes(obj) {
         typeof obj[1] == "string" && obj[1].length > 1) {
         if ((0, string_utils_1.isLetterOrDigit)(obj[0].charCodeAt(obj.length - 1))
             || (0, string_utils_1.isLetterOrDigit)(obj[1].charCodeAt(0))) {
-            re = defaultRegExp;
             opening = "{{";
             closing = "}}";
             return "Invalid escape strings: inner-most character must not be letter or digits";
         }
-        try {
-            re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
-            opening = obj[0];
-            closing = obj[1];
-            return null;
-        }
-        catch (err) {
-            re = defaultRegExp;
-            console.error(err);
-            return "Error at regular expression creation: rolling back to default {{ }}";
-        }
+        opening = obj[0];
+        closing = obj[1];
+        return null;
     }
     else {
-        re = defaultRegExp;
         opening = "{{";
         closing = "}}";
         return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
@@ -193,24 +188,39 @@ exports.getSuggestions = getSuggestions;
 function diagnose(doc, collection) {
     const item = mapHTML.get(doc.uri.fsPath);
     if (!item || !item.valid)
-        return null;
+        return;
     let line;
     let site;
-    let end;
+    let start;
+    let stop;
     let piece;
     let diagnostic;
     let diagnostics = [];
+    const ol = opening.length;
+    const cl = closing.length;
     for (var i = 0; i < doc.lineCount; i++) {
+        site = 0;
         line = doc.lineAt(i).text;
-        while ((site = line.indexOf(opening)) !== -1) {
-            site = (0, string_utils_1.firstNonSpace)(line, site);
-            end = (0, string_utils_1.firstNonTyping)(line, site, allowedInEscape);
-            if (!(0, string_utils_1.matchStringAfter)(closing, line, (0, string_utils_1.firstNonSpace)(line, end)))
+        while ((site = line.indexOf(opening, site)) !== -1) {
+            start = (0, string_utils_1.firstNonSpace)(line, site + ol);
+            stop = (0, string_utils_1.firstNonTyping)(line, start, allowedInEscape);
+            site = (0, string_utils_1.firstNonSpace)(line, stop);
+            if (!(0, string_utils_1.matchStringAfter)(closing, line, site))
                 continue;
-            piece = line.substring(site, end);
+            site += cl;
+            if (start == stop) {
+                diagnostic = new vscode_1.Diagnostic(new vscode_1.Range(i, start, i, stop), "No translated text specified", vscode_1.DiagnosticSeverity.Warning);
+                diagnostic.source = SOURCE;
+                diagnostic.code = CODES.empty;
+                diagnostics.push(diagnostic);
+                continue;
+            }
+            piece = line.substring(start, stop);
             if (item.keys.includes(piece))
                 continue;
-            diagnostic = new vscode_1.Diagnostic(new vscode_1.Range(i, site, i, end), "This trsnalted text does not exist", vscode_1.DiagnosticSeverity.Warning);
+            diagnostic = new vscode_1.Diagnostic(new vscode_1.Range(i, start, i, stop), `"${piece}" is not a valid translated text`, vscode_1.DiagnosticSeverity.Warning);
+            diagnostic.source = SOURCE;
+            diagnostic.code = CODES.nonexistent;
             diagnostics.push(diagnostic);
         }
     }

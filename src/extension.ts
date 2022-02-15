@@ -14,6 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
 	function stop() {
 		clearAll();
 		if(disposables) {
+			outputChannel.appendLine("Disposing autocompletition and diagnostrics");
 			disposables.dispose();
 			disposables = null;
 		}
@@ -21,6 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	function start() {
 		if(!disposables) {
+			outputChannel.appendLine("Activating autocompletition and diagnostics");
 			disposables = vscode.Disposable.from(
 				vscode.languages.registerCompletionItemProvider("html", { provideCompletionItems: getSuggestions }, '.'),
 				vscode.workspace.onDidSaveTextDocument(updateTranslationsFrom),
@@ -42,6 +44,9 @@ export function activate(context: vscode.ExtensionContext) {
 				outputChannel.appendLine("Everything is good to go!");
 			}
 			outputChannel.appendLine("");
+			if(vscode.window.activeTextEditor) {
+				diagnose(vscode.window.activeTextEditor.document, diagnostics);
+			}
 		});
 	}
 
@@ -49,6 +54,14 @@ export function activate(context: vscode.ExtensionContext) {
 		diagnostics, outputChannel,
 		vscode.commands.registerCommand("html-translator.stop", stop),
 		vscode.commands.registerCommand("html-translator.start", start),
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if(!e.affectsConfiguration("html-translator")) return;
+			if(!disposables) return;
+			vscode.window.showInformationMessage(
+				"Changes to the configuration were detected. In order for them to take effect html-translator must be restarted",
+				"Restart"
+			).then(v => v && start());
+		})
 	);
 }
 
