@@ -1,15 +1,16 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.wantsTranslations = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = void 0;
+exports.diagnose = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = void 0;
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
-const utils_1 = require("./utils");
+const string_utils_1 = require("./string-utils");
 let opening = "{{";
 let closing = "}}";
 let re;
 const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
+let langs;
 let data;
 const mapHTML = new Map();
 const mapJSON = new Map();
@@ -75,8 +76,8 @@ function parseEscapes(obj) {
     if (Array.isArray(obj) && obj.length == 2 &&
         typeof obj[0] == "string" && obj[0].length > 1 &&
         typeof obj[1] == "string" && obj[1].length > 1) {
-        if ((0, utils_1.isLetterOrDigit)(obj[0].charCodeAt(obj.length - 1))
-            || (0, utils_1.isLetterOrDigit)(obj[1].charCodeAt(0))) {
+        if ((0, string_utils_1.isLetterOrDigit)(obj[0].charCodeAt(obj.length - 1))
+            || (0, string_utils_1.isLetterOrDigit)(obj[1].charCodeAt(0))) {
             re = defaultRegExp;
             opening = "{{";
             closing = "}}";
@@ -153,17 +154,17 @@ function clearAll() {
     console.log("Everything cleared");
 }
 exports.clearAll = clearAll;
-const allowedInEscape = (0, utils_1.charCodesOf)("._");
-const allowedInUrl = (0, utils_1.charCodesOf)("./_ #$");
+const allowedInEscape = (0, string_utils_1.charCodesOf)("._");
+const allowedInUrl = (0, string_utils_1.charCodesOf)("./_ #$");
 function getSuggestions(doc, pos) {
     const item = mapHTML.get(doc.uri.fsPath);
     if (!item || !item.valid)
         return null;
     const line = doc.lineAt(pos.line).text;
     const col = pos.character;
-    if ((0, utils_1.matchStringAfter)(closing, line, (0, utils_1.firstNonSpace)(line, col))) {
-        const s = (0, utils_1.getTypedBefore)(line, col, allowedInEscape);
-        if (!s || !(0, utils_1.matchStringBefore)(opening, line, (0, utils_1.lastNonSpace)(line, col - s.length - 1)))
+    if ((0, string_utils_1.matchStringAfter)(closing, line, (0, string_utils_1.firstNonSpace)(line, col))) {
+        const s = (0, string_utils_1.getTypedBefore)(line, col, allowedInEscape);
+        if (!s || !(0, string_utils_1.matchStringBefore)(opening, line, (0, string_utils_1.lastNonSpace)(line, col - s.length - 1)))
             return null;
         console.log("Load suggestions");
         const dot_index = s.lastIndexOf(".");
@@ -176,9 +177,9 @@ function getSuggestions(doc, pos) {
     }
     else {
         console.log("Suggest snippet");
-        const ns = (0, utils_1.lastNonSpace)(line, col - 1);
+        const ns = (0, string_utils_1.lastNonSpace)(line, col - 1);
         console.log(ns, col);
-        if (!(0, utils_1.matchStringBefore)(opening, line, ns))
+        if (!(0, string_utils_1.matchStringBefore)(opening, line, ns))
             return null;
         const item = new vscode_1.CompletionItem("translated text reference", vscode_1.CompletionItemKind.Snippet);
         if (ns !== col - 1)
@@ -189,8 +190,31 @@ function getSuggestions(doc, pos) {
     }
 }
 exports.getSuggestions = getSuggestions;
-function wantsTranslations(doc) {
-    return mapHTML.has(doc.uri.fsPath);
+function diagnose(doc, collection) {
+    const item = mapHTML.get(doc.uri.fsPath);
+    if (!item || !item.valid)
+        return null;
+    let line;
+    let site;
+    let end;
+    let piece;
+    let diagnostic;
+    let diagnostics = [];
+    for (var i = 0; i < doc.lineCount; i++) {
+        line = doc.lineAt(i).text;
+        while ((site = line.indexOf(opening)) !== -1) {
+            site = (0, string_utils_1.firstNonSpace)(line, site);
+            end = (0, string_utils_1.firstNonTyping)(line, site, allowedInEscape);
+            if (!(0, string_utils_1.matchStringAfter)(closing, line, (0, string_utils_1.firstNonSpace)(line, end)))
+                continue;
+            piece = line.substring(site, end);
+            if (item.keys.includes(piece))
+                continue;
+            diagnostic = new vscode_1.Diagnostic(new vscode_1.Range(i, site, i, end), "This trsnalted text does not exist", vscode_1.DiagnosticSeverity.Warning);
+            diagnostics.push(diagnostic);
+        }
+    }
+    collection.set(doc.uri, diagnostics);
 }
-exports.wantsTranslations = wantsTranslations;
+exports.diagnose = diagnose;
 //# sourceMappingURL=data.js.map

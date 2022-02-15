@@ -4,61 +4,55 @@ import * as vscode from 'vscode';
 
 import { parseConfig, clearAll, updateTranslationsFrom, getSuggestions, diagnose } from "./data";
 
-
-let outputChannel: vscode.OutputChannel;
-
-async function syncWithConfig() {
-	outputChannel.appendLine("Reading files configuration...")
-	let errs = await parseConfig();
-	if(errs) {
-		errs.forEach(outputChannel.appendLine);
-		vscode.window.showErrorMessage("One or more thing went wrong", "See errors").then(v => v && outputChannel.show());
-	} else {
-		outputChannel.appendLine("Everything is all good to go");
-	}
-	outputChannel.appendLine("");
-}
-
+let disposables: vscode.Disposable | null;
 
 export function activate(context: vscode.ExtensionContext) {
 
 	const diagnostics = vscode.languages.createDiagnosticCollection("html-translation");
-	outputChannel = vscode.window.createOutputChannel("HTML translator");
+	const outputChannel = vscode.window.createOutputChannel("HTML translator");
 
-	const configChange = vscode.workspace.onDidChangeConfiguration((e) => {
-		if(!e.affectsConfiguration("html-translator")) return;
+	function stop() {
+		clearAll();
+		if(disposables) {
+			disposables.dispose();
+			disposables = null;
+		}
+	}
 
-		// if(e.affectsConfiguration("html-translator.languages")) 
-		// if(e.affectsConfiguration("html-translator.files")) 
-		syncWithConfig();
-	});
-	
-	const start = vscode.commands.registerCommand("html-translator.start", syncWithConfig);
-	const stop = vscode.commands.registerCommand("html-translator.stop", clearAll);
+	function start() {
+		if(!disposables) {
+			disposables = vscode.Disposable.from(
+				vscode.languages.registerCompletionItemProvider("html", { provideCompletionItems: getSuggestions }, '.'),
+				vscode.workspace.onDidSaveTextDocument(updateTranslationsFrom),
+				vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri)),
+				vscode.workspace.onDidChangeTextDocument(e => diagnose(e.document, diagnostics)),
+				vscode.window.onDidChangeActiveTextEditor(editor => {
+					if(!editor) return;
+					diagnose(editor.document, diagnostics);
+				})
+			);
+		}
+		outputChannel.appendLine("Reading files configuration...");
+		parseConfig().then(errs => {
+			if(errs) {
+				errs.forEach(outputChannel.appendLine);
+				vscode.window.showErrorMessage("One or more things went wrong", "See errors")
+				.then(v => v && outputChannel.show());
+			} else {
+				outputChannel.appendLine("Everything is good to go!");
+			}
+			outputChannel.appendLine("");
+		});
+	}
 
-	// const openDocumentDisposable = vscode.workspace.onDidOpenTextDocument(loadTranslationsFor);
-	// const closeDocumentDisposable = vscode.workspace.onDidCloseTextDocument(unloadTranslationsFor);
-	const translUpdate = vscode.workspace.onDidSaveTextDocument(updateTranslationsFrom);
-
-	const completition =  vscode.languages.registerCompletionItemProvider("html", {
-		provideCompletionItems: getSuggestions
-	}, '.');
-
-	if(vscode.window.activeTextEditor) diagnose(vscode.window.activeTextEditor.document, diagnostics);
 	context.subscriptions.push(
-		vscode.window.onDidChangeActiveTextEditor(editor => {
-			if(!editor) return;
-			diagnose(editor.document, diagnostics);
-		}),
-		vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri)),
-		vscode.workspace.onDidChangeTextDocument(e => diagnose(e.document, diagnostics))
+		diagnostics, outputChannel,
+		vscode.commands.registerCommand("html-translator.stop", stop),
+		vscode.commands.registerCommand("html-translator.start", start),
 	);
-
-	context.subscriptions.push(diagnostics, configChange, start, stop, translUpdate, completition);
-
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {
-	outputChannel.dispose();
+	disposables?.dispose();
 }
