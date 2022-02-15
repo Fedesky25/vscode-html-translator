@@ -1,6 +1,7 @@
-import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind } from "vscode";
+import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind, Uri } from "vscode";
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
+import { getTyped, charCodesOf, isLetterOrDigit } from './utils';
 
 let opening = "{{";
 let closing = "}}";
@@ -11,6 +12,7 @@ const root = workspace.workspaceFolders ? workspace.workspaceFolders[0].uri.fsPa
 type TranslationDataItem = {
     htmlPath: string,
     jsonPath: string,
+    outPath?: string,
     keys: string[],
     valid: boolean
 }
@@ -82,6 +84,15 @@ function parseEscapes(obj: unknown): string | null {
         typeof obj[0] == "string" && obj[0].length > 1 && 
         typeof obj[1] == "string" && obj[1].length > 1
     ) {
+        if(
+            isLetterOrDigit(obj[0].charCodeAt(obj.length-1))
+            || isLetterOrDigit(obj[1].charCodeAt(0))
+        ) {
+            re = defaultRegExp;
+            opening = "{{";
+            closing = "}}";
+            return "Invalid escape strings: inner-most character must not be letter or digits";
+        }
         try {
             re = new RegExp(obj[0] + "\s*([a-zA-Z._\-]*)\s*" + obj[1]);
             opening = obj[0];
@@ -149,35 +160,16 @@ export function clearAll() {
     console.log("Everything cleared");
 }
 
-function getWritten(line: string, col: number): string | null {
-    let len: number;
-    var i: number = col;
-    var j: number;
-    while(line[i] === " ") i++;
-    len = closing.length;
-    for(j=0; j<len; j++) if(line[i+j] !== closing[j]) return null;
-    i = col;
-    do {
-        i--;
-        j = line.charCodeAt(i);
-    } while (
-        (j > 96 && j < 123) || // lowercase letters
-        (j > 64 && j < 91) || // uppercase letters
-        (j > 47 && j < 58) || // numbers
-        j === 46 || j === 95 // . _
-    );
-    const res = line.substring(i+1,col);
-    while(line[i] === " ") i--;
-    if(i < 2) return null;
-    len = opening.length;
-    for(j=0; j<len; j++) if(line[i+1-len+j] !== opening[j]) return null;
-    return res;
-}
+
+const allowedInEscape = charCodesOf("._");
+const allowedInUrl = charCodesOf("./_#$");
 
 export function getSuggestions(doc: TextDocument, pos: Position): null|CompletionItem[] {
     const item = mapHTML.get(doc.uri.fsPath);
     if(!item || !item.valid) return null;
-    const written = getWritten(doc.lineAt(pos.line).text, pos.character);
+    const line = doc.lineAt(pos.line).text;
+
+    const written = getTyped(line, pos.character, opening, closing, allowedInEscape);
     if(written === null) return null;
 
     const dot_index = written.lastIndexOf(".");

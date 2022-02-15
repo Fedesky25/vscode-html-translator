@@ -7,6 +7,8 @@ All notable changes to the "html-translator" extension will be documented in thi
 ## 0.0.3
 
 * Support for custom escaping strings
+* Completition matching does not use regexp anymore
+* Multiple escapes on same line
 
 ## 0.0.2
 
