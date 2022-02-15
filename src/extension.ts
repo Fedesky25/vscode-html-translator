@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-import { parseConfig, clearAll, updateTranslationsFrom, getSuggestions } from "./data";
+import { parseConfig, clearAll, updateTranslationsFrom, getSuggestions, diagnose } from "./data";
 
 
 let outputChannel: vscode.OutputChannel;
@@ -22,6 +22,7 @@ async function syncWithConfig() {
 
 export function activate(context: vscode.ExtensionContext) {
 
+	const diagnostics = vscode.languages.createDiagnosticCollection("html-translation");
 	outputChannel = vscode.window.createOutputChannel("HTML translator");
 
 	const configChange = vscode.workspace.onDidChangeConfiguration((e) => {
@@ -43,7 +44,17 @@ export function activate(context: vscode.ExtensionContext) {
 		provideCompletionItems: getSuggestions
 	}, '.');
 
-	context.subscriptions.push(configChange, start, stop, translUpdate, completition);
+	if(vscode.window.activeTextEditor) diagnose(vscode.window.activeTextEditor.document, diagnostics);
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(editor => {
+			if(!editor) return;
+			diagnose(editor.document, diagnostics);
+		}),
+		vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri)),
+		vscode.workspace.onDidChangeTextDocument(e => diagnose(e.document, diagnostics))
+	);
+
+	context.subscriptions.push(diagnostics, configChange, start, stop, translUpdate, completition);
 
 }
 

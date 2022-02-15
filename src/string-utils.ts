@@ -75,3 +75,18 @@ export function getTypedBefore(line: string, col: number, allowedCodes: number[]
     while (isLetterOrDigit(code) || allowedCodes.includes(code));
     return line.substring(i+1, col);
 }
+
+/**
+ * Returns the index of the first char that is not a letter, digits, or one of the codes
+ * @param line line of text
+ * @param col column index
+ * @param codes array of supplementary allowed char codes
+ * @returns 
+ */
+export function firstNonTyping(line: string, col: number, codes: number[]): number {
+    var code: number;
+    var i: number = col-1;
+    do { code = line.charCodeAt(++i) }
+    while (isLetterOrDigit(code) || codes.includes(code));
+    return i;
+}

@@ -1,12 +1,12 @@
-import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind, SnippetString, Range } from "vscode";
+import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind, SnippetString, Range, DiagnosticCollection, Diagnostic, DiagnosticSeverity } from "vscode";
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
 import { 
     charCodesOf, isLetterOrDigit,
     firstNonSpace, lastNonSpace,
     matchStringBefore, matchStringAfter,
-    getTypedBefore,
-} from './utils';
+    getTypedBefore, firstNonTyping,
+} from './string-utils';
 
 let opening = "{{";
 let closing = "}}";
@@ -22,6 +22,7 @@ type TranslationDataItem = {
     valid: boolean
 }
 
+let langs: string[];
 let data: TranslationDataItem[];
 const mapHTML: Map<string, TranslationDataItem> = new Map();
 const mapJSON: Map<string, TranslationDataItem> = new Map();
@@ -201,6 +202,30 @@ export function getSuggestions(doc: TextDocument, pos: Position): null|Completio
     }
 }
 
-export function wantsTranslations(doc: TextDocument) {
-    return mapHTML.has(doc.uri.fsPath);
+export function diagnose(doc: TextDocument, collection: DiagnosticCollection) {
+    const item = mapHTML.get(doc.uri.fsPath);
+    if(!item || !item.valid) return null;
+    let line: string;
+    let site: number;
+    let end: number;
+    let piece: string;
+    let diagnostic: Diagnostic;
+    let diagnostics: Diagnostic[] = [];
+    for(var i=0; i<doc.lineCount; i++) {
+        line = doc.lineAt(i).text;
+        while((site = line.indexOf(opening)) !== -1) {
+            site = firstNonSpace(line, site);
+            end = firstNonTyping(line, site, allowedInEscape);
+            if(!matchStringAfter(closing, line, firstNonSpace(line, end))) continue;
+            piece = line.substring(site, end);
+            if(item.keys.includes(piece)) continue;
+            diagnostic = new Diagnostic(
+                new Range(i,site,i,end),
+                "This trsnalted text does not exist",
+                DiagnosticSeverity.Warning
+            );
+            diagnostics.push(diagnostic);
+        }
+    }
+    collection.set(doc.uri, diagnostics);
 }
