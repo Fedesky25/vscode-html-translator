@@ -2,7 +2,7 @@
   "name": "html-translator",
 	"displayName": "html-translator",
 	"description": "",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"engines": {
 		"vscode": "^1.64.0"
 	},

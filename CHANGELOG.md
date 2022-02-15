@@ -4,6 +4,10 @@ All notable changes to the "html-translator" extension will be documented in thi
 
 <!-- Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file. -->
 
+## 0.0.4
+
+* Diagnostics in HTML files
+
 ## 0.0.3
 
 * Support for custom escaping strings
