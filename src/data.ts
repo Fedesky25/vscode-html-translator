@@ -1,4 +1,8 @@
-import { TextDocument, Position, CompletionItem, workspace, CompletionItemKind, SnippetString, Range, DiagnosticCollection, Diagnostic, DiagnosticSeverity, TextDocumentChangeEvent } from "vscode";
+import { 
+    TextDocument, Position, CompletionItem, workspace, CompletionItemKind, 
+    SnippetString, Range, DiagnosticCollection, Diagnostic, DiagnosticSeverity, 
+    TextDocumentChangeEvent, TextDocumentContentChangeEvent 
+} from "vscode";
 import { join as joinPath } from "path";
 import { readFile, access } from 'fs/promises';
 import { 
@@ -6,6 +10,7 @@ import {
     firstNonSpace, lastNonSpace,
     matchStringBefore, matchStringAfter,
     getTypedBefore, firstNonTyping,
+    countNewLines
 } from './string-utils';
 
 let opening = "{{";
@@ -177,58 +182,73 @@ export function getSuggestions(doc: TextDocument, pos: Position): null|Completio
     }
     else
     {
-        console.log("Suggest snippet");
         if(!matchStringBefore(opening, line, col-1)) return null;
+        console.log("Suggest snippet");
         const item = new CompletionItem("translated item ", CompletionItemKind.Snippet);
         item.insertText = new SnippetString("${0:textID}").appendText(closing);
         return [item];
     }
 }
 
+function createDiagEmpty(line: number, pos: number): Diagnostic {
+    let res = new Diagnostic(
+        new Range(line,pos,line,pos),
+        "No translated text specified",
+        DiagnosticSeverity.Warning
+    );
+    res.code = CODES.empty;
+    res.source = SOURCE;
+    return res;
+}
+
+function createDiagNonExistent(line: number, start: number, stop: number, what: string) {
+    let res = new Diagnostic(
+        new Range(line, start, line, stop),
+        `"${what}" is not a valid translated text`,
+        DiagnosticSeverity.Warning
+    );
+    res.code = CODES.nonexistent;
+    res.source = SOURCE;
+    return res;
+}
+
+function shiftDiagnostic(diagnostic: Diagnostic, delta: number) {
+    let res = new Diagnostic(
+        new Range(diagnostic.range.start.translate(delta), diagnostic.range.end.translate(delta)),
+        diagnostic.message,
+        diagnostic.severity
+    );
+    res.code = diagnostic.code;
+    res.source = diagnostic.source;
+    return res;
+}
+
+function diagnoseLine(line: string, index: number, keys: string[], diagnostics: Diagnostic[]) {
+    var start: number;
+    var stop: number;
+    var piece: string;
+    var site = line.indexOf(opening);
+    while(site !== -1) {
+        start = firstNonSpace(line, site+opening.length);
+        stop = firstNonTyping(line, start, allowedInEscape);
+        site = firstNonSpace(line, stop);
+        if(matchStringAfter(closing, line, site)) {
+            site += closing.length;
+            if(start === stop) diagnostics.push(createDiagEmpty(index,start));
+            else {
+                piece = line.substring(start, stop);
+                if(!keys.includes(piece)) diagnostics.push(createDiagNonExistent(index,start,stop,piece));
+            }
+        }
+        site = line.indexOf(opening, site);
+    }
+}
+
 export function diagnose(doc: TextDocument, collection: DiagnosticCollection) {
     const item = mapHTML.get(doc.uri.fsPath);
     if(!item || !item.valid) return;
-    let line: string;
-    let site: number;
-    let start: number;
-    let stop: number;
-    let piece: string;
-    let diagnostic: Diagnostic;
     let diagnostics: Diagnostic[] = [];
-    const ol = opening.length;
-    const cl = closing.length;
-    for(var i=0; i<doc.lineCount; i++) {
-        site = 0;
-        line = doc.lineAt(i).text; 
-        while((site = line.indexOf(opening,site)) !== -1) {
-            start = firstNonSpace(line, site+ol);
-            stop = firstNonTyping(line, start, allowedInEscape);
-            site = firstNonSpace(line, stop);
-            if(!matchStringAfter(closing, line, site)) continue;
-            site += cl;
-            if(start == stop) {
-                diagnostic = new Diagnostic(
-                    new Range(i,start,i,stop),
-                    "No translated text specified",
-                    DiagnosticSeverity.Warning
-                );
-                diagnostic.source = SOURCE;
-                diagnostic.code = CODES.empty;
-                diagnostics.push(diagnostic);
-                continue;
-            }
-            piece = line.substring(start, stop);
-            if(item.keys.includes(piece)) continue;
-            diagnostic = new Diagnostic(
-                new Range(i,start,i,stop),
-                `"${piece}" is not a valid translated text`,
-                DiagnosticSeverity.Warning
-            );
-            diagnostic.source = SOURCE;
-            diagnostic.code = CODES.nonexistent;
-            diagnostics.push(diagnostic);
-        }
-    }
+    for(var i=0; i<doc.lineCount; i++) diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
     collection.set(doc.uri, diagnostics);
 }
 
@@ -236,11 +256,38 @@ export function updateDiagnostics(ev: TextDocumentChangeEvent, collection: Diagn
     const uri = ev.document.uri;
     const item = mapHTML.get(uri.fsPath);
     if(!item || !item.valid) return;
-    console.log(ev.contentChanges);
-    let range: Range;
     const len = ev.contentChanges.length;
-    // for(var i=0; i<len; i++) {
-    //     range = ev.contentChanges[i].range;
-    // }
-    diagnose(ev.document,collection);
+    if(!len) return;
+    const doc = ev.document;
+    const old = collection.get(uri);
+    if(!old) return diagnose(doc, collection);
+
+
+    let i: number;
+    const oldSize = old.length;
+    const diagnostics: Diagnostic[] = [];
+    let firstLine = ev.contentChanges[len-1].range.start.line;
+    let lastOld = 0;
+    // if there is valid old diagnostic retrieve it till the first changed line
+    console.log(`oldSize=${oldSize}, firstLine=${firstLine}`);
+    // changes ordered in line decreasing order
+    for(i=0; i<oldSize && old[i].range.start.line < firstLine; i++) diagnostics.push(old[i]);
+    lastOld = i;
+    if(len > 1) {
+        for(i=firstLine; i<doc.lineCount; i++) diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
+    } else {
+        const change = ev.contentChanges[0];
+        const insertedLines = countNewLines(change.text);
+        const removedLines = change.range.end.line - change.range.start.line;
+        const delta = insertedLines - removedLines;
+        console.log("Only one change, delta = "+delta);
+        for(i=0; i<=insertedLines; i++) {
+            diagnoseLine(doc.lineAt(firstLine+i).text, firstLine+i, item.keys, diagnostics);
+        }
+        i = lastOld;
+        while(i<oldSize && old[i].range.start.line === firstLine) i++;
+        if(delta) while(i<oldSize) diagnostics.push(shiftDiagnostic(old[i++], delta));
+        else while(i<oldSize) diagnostics.push(old[i++]);
+    }
+    collection.set(uri, diagnostics);
 }

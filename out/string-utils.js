@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.firstNonTyping = exports.getTypedBefore = exports.matchStringAfter = exports.matchStringBefore = exports.lastNonSpace = exports.firstNonSpace = exports.isLetterOrDigit = exports.charCodesOf = void 0;
+exports.countNewLines = exports.firstNonTyping = exports.getTypedBefore = exports.matchStringAfter = exports.matchStringBefore = exports.lastNonSpace = exports.firstNonSpace = exports.isLetterOrDigit = exports.charCodesOf = void 0;
 function charCodesOf(str) {
     const len = str.length;
     const res = new Array(len);
@@ -101,4 +101,13 @@ function firstNonTyping(line, col, codes) {
     return i;
 }
 exports.firstNonTyping = firstNonTyping;
+function countNewLines(text) {
+    let count = 0;
+    const len = text.length;
+    for (var i = 0; i < len; i++)
+        if (text[i] === "\n")
+            count++;
+    return count;
+}
+exports.countNewLines = countNewLines;
 //# sourceMappingURL=string-utils.js.map

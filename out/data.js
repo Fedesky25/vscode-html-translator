@@ -76,30 +76,29 @@ async function parseConfigFilesItem(obj, index) {
  * @returns error string or null
  */
 function parseEscapes(obj) {
-    if (!obj) {
-        opening = "{{";
-        closing = "}}";
+    opening = "{{";
+    closing = "}}";
+    if (!obj)
         return null;
-    }
+    let error = null;
     if (Array.isArray(obj) && obj.length == 2 &&
         typeof obj[0] == "string" && obj[0].length > 1 &&
         typeof obj[1] == "string" && obj[1].length > 1) {
         const c1 = obj[0].charCodeAt(obj[0].length - 1);
         const c2 = obj[1].charCodeAt(0);
         if ((0, string_utils_1.isLetterOrDigit)(c1) || allowedInEscape.includes(c1) || (0, string_utils_1.isLetterOrDigit)(c2) || allowedInEscape.includes(c2)) {
-            opening = "{{";
-            closing = "}}";
-            return "Invalid escape strings: inner-most characters must be different from letters, digits, or . _";
+            error = "Invalid escape strings: inner-most characters must be different from letters, digits, or . _";
         }
-        opening = obj[0];
-        closing = obj[1];
-        return null;
+        else {
+            opening = obj[0];
+            closing = obj[1];
+        }
     }
     else {
-        opening = "{{";
-        closing = "}}";
-        return "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
+        error = "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
     }
+    completeSnippet = new vscode_1.SnippetString().appendText(opening).appendTabstop(0).appendText(closing);
+    return error;
 }
 /**
  * Parses the extension configuration
@@ -173,54 +172,62 @@ function getSuggestions(doc, pos) {
             : matches.map(v => new vscode_1.CompletionItem(v.substring(dot_index + 1), vscode_1.CompletionItemKind.EnumMember));
     }
     else {
-        console.log("Suggest snippet");
         if (!(0, string_utils_1.matchStringBefore)(opening, line, col - 1))
             return null;
+        console.log("Suggest snippet");
         const item = new vscode_1.CompletionItem("translated item ", vscode_1.CompletionItemKind.Snippet);
         item.insertText = new vscode_1.SnippetString("${0:textID}").appendText(closing);
         return [item];
     }
 }
 exports.getSuggestions = getSuggestions;
+function createDiagEmpty(line, pos) {
+    let res = new vscode_1.Diagnostic(new vscode_1.Range(line, pos, line, pos), "No translated text specified", vscode_1.DiagnosticSeverity.Warning);
+    res.code = CODES.empty;
+    res.source = SOURCE;
+    return res;
+}
+function createDiagNonExistent(line, start, stop, what) {
+    let res = new vscode_1.Diagnostic(new vscode_1.Range(line, start, line, stop), `"${what}" is not a valid translated text`, vscode_1.DiagnosticSeverity.Warning);
+    res.code = CODES.nonexistent;
+    res.source = SOURCE;
+    return res;
+}
+function shiftDiagnostic(diagnostic, delta) {
+    let res = new vscode_1.Diagnostic(new vscode_1.Range(diagnostic.range.start.translate(delta), diagnostic.range.end.translate(delta)), diagnostic.message, diagnostic.severity);
+    res.code = diagnostic.code;
+    res.source = diagnostic.source;
+    return res;
+}
+function diagnoseLine(line, index, keys, diagnostics) {
+    var start;
+    var stop;
+    var piece;
+    var site = line.indexOf(opening);
+    while (site !== -1) {
+        start = (0, string_utils_1.firstNonSpace)(line, site + opening.length);
+        stop = (0, string_utils_1.firstNonTyping)(line, start, allowedInEscape);
+        site = (0, string_utils_1.firstNonSpace)(line, stop);
+        if ((0, string_utils_1.matchStringAfter)(closing, line, site)) {
+            site += closing.length;
+            if (start === stop)
+                diagnostics.push(createDiagEmpty(index, start));
+            else {
+                piece = line.substring(start, stop);
+                if (!keys.includes(piece))
+                    diagnostics.push(createDiagNonExistent(index, start, stop, piece));
+            }
+        }
+        site = line.indexOf(opening, site);
+    }
+}
 function diagnose(doc, collection) {
     const item = mapHTML.get(doc.uri.fsPath);
     if (!item || !item.valid)
         return;
-    let line;
-    let site;
-    let start;
-    let stop;
-    let piece;
-    let diagnostic;
     let diagnostics = [];
-    const ol = opening.length;
-    const cl = closing.length;
-    for (var i = 0; i < doc.lineCount; i++) {
-        site = 0;
-        line = doc.lineAt(i).text;
-        while ((site = line.indexOf(opening, site)) !== -1) {
-            start = (0, string_utils_1.firstNonSpace)(line, site + ol);
-            stop = (0, string_utils_1.firstNonTyping)(line, start, allowedInEscape);
-            site = (0, string_utils_1.firstNonSpace)(line, stop);
-            if (!(0, string_utils_1.matchStringAfter)(closing, line, site))
-                continue;
-            site += cl;
-            if (start == stop) {
-                diagnostic = new vscode_1.Diagnostic(new vscode_1.Range(i, start, i, stop), "No translated text specified", vscode_1.DiagnosticSeverity.Warning);
-                diagnostic.source = SOURCE;
-                diagnostic.code = CODES.empty;
-                diagnostics.push(diagnostic);
-                continue;
-            }
-            piece = line.substring(start, stop);
-            if (item.keys.includes(piece))
-                continue;
-            diagnostic = new vscode_1.Diagnostic(new vscode_1.Range(i, start, i, stop), `"${piece}" is not a valid translated text`, vscode_1.DiagnosticSeverity.Warning);
-            diagnostic.source = SOURCE;
-            diagnostic.code = CODES.nonexistent;
-            diagnostics.push(diagnostic);
-        }
-    }
+    for (var i = 0; i < doc.lineCount; i++)
+        diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
     collection.set(doc.uri, diagnostics);
 }
 exports.diagnose = diagnose;
@@ -229,11 +236,48 @@ function updateDiagnostics(ev, collection) {
     const item = mapHTML.get(uri.fsPath);
     if (!item || !item.valid)
         return;
-    let range;
     const len = ev.contentChanges.length;
-    for (var i = 0; i < len; i++) {
-        range = ev.contentChanges[i].range;
+    if (!len)
+        return;
+    const doc = ev.document;
+    const old = collection.get(uri);
+    if (!old)
+        return diagnose(doc, collection);
+    let i;
+    const oldSize = old.length;
+    const diagnostics = [];
+    let firstLine = ev.contentChanges[len - 1].range.start.line;
+    let lastOld = 0;
+    // if there is valid old diagnostic retrieve it till the first changed line
+    console.log(`oldSize=${oldSize}, firstLine=${firstLine}`);
+    // changes ordered in line decreasing order
+    for (i = 0; i < oldSize && old[i].range.start.line < firstLine; i++)
+        diagnostics.push(old[i]);
+    lastOld = i;
+    if (len > 1) {
+        for (i = firstLine; i < doc.lineCount; i++)
+            diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
     }
+    else {
+        const change = ev.contentChanges[0];
+        const insertedLines = (0, string_utils_1.countNewLines)(change.text);
+        const removedLines = change.range.end.line - change.range.start.line;
+        const delta = insertedLines - removedLines;
+        console.log("Only one change, delta = " + delta);
+        for (i = 0; i <= insertedLines; i++) {
+            diagnoseLine(doc.lineAt(firstLine + i).text, firstLine + i, item.keys, diagnostics);
+        }
+        i = lastOld;
+        while (i < oldSize && old[i].range.start.line === firstLine)
+            i++;
+        if (delta)
+            while (i < oldSize)
+                diagnostics.push(shiftDiagnostic(old[i++], delta));
+        else
+            while (i < oldSize)
+                diagnostics.push(old[i++]);
+    }
+    collection.set(uri, diagnostics);
 }
 exports.updateDiagnostics = updateDiagnostics;
 //# sourceMappingURL=data.js.map

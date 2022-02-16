@@ -7,6 +7,7 @@ All notable changes to the "html-translator" extension will be documented in thi
 ## 0.0.4
 
 * Diagnostics in HTML files
+* Reuse of old diagnostic to save performance
 
 ## 0.0.3
 

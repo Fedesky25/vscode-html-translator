@@ -90,3 +90,10 @@ export function firstNonTyping(line: string, col: number, codes: number[]): numb
     while (isLetterOrDigit(code) || codes.includes(code));
     return i;
 }
+
+export function countNewLines(text: string): number {
+    let count = 0;
+    const len = text.length;
+    for(var i=0; i<len; i++) if(text[i] === "\n") count++;
+    return count;
+}

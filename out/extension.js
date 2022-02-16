@@ -20,7 +20,7 @@ function activate(context) {
     function start() {
         if (!disposables) {
             outputChannel.appendLine("Activating autocompletition and diagnostics");
-            disposables = vscode.Disposable.from(vscode.languages.registerCompletionItemProvider("html", { provideCompletionItems: data_1.getSuggestions }, '.'), vscode.workspace.onDidSaveTextDocument(data_1.updateTranslationsFrom), vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri)), vscode.workspace.onDidChangeTextDocument(e => (0, data_1.diagnose)(e.document, diagnostics)), vscode.window.onDidChangeActiveTextEditor(editor => {
+            disposables = vscode.Disposable.from(vscode.languages.registerCompletionItemProvider("html", { provideCompletionItems: data_1.getSuggestions }, '.'), vscode.workspace.onDidSaveTextDocument(data_1.updateTranslationsFrom), vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri)), vscode.workspace.onDidChangeTextDocument(e => (0, data_1.updateDiagnostics)(e, diagnostics)), vscode.window.onDidChangeActiveTextEditor(editor => {
                 if (!editor)
                     return;
                 (0, data_1.diagnose)(editor.document, diagnostics);
