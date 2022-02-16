@@ -26,6 +26,7 @@ function activate(context) {
                 (0, data_1.diagnose)(editor.document, diagnostics);
             }));
         }
+        diagnostics.clear();
         outputChannel.appendLine("Reading files configuration...");
         (0, data_1.parseConfig)().then(errs => {
             if (errs) {

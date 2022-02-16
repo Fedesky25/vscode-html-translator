@@ -34,6 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
 				})
 			);
 		}
+		diagnostics.clear();
 		outputChannel.appendLine("Reading files configuration...");
 		parseConfig().then(errs => {
 			if(errs) {

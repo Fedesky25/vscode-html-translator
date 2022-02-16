@@ -1,14 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.diagnose = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = void 0;
+exports.updateDiagnostics = exports.diagnose = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = void 0;
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
 const string_utils_1 = require("./string-utils");
 let opening = "{{";
 let closing = "}}";
+let completeSnippet;
 const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
 const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
+const allowedInEscape = (0, string_utils_1.charCodesOf)("._");
+const allowedInUrl = (0, string_utils_1.charCodesOf)("./_ #$");
 var CODES;
 (function (CODES) {
     CODES[CODES["empty"] = 0] = "empty";
@@ -81,11 +84,12 @@ function parseEscapes(obj) {
     if (Array.isArray(obj) && obj.length == 2 &&
         typeof obj[0] == "string" && obj[0].length > 1 &&
         typeof obj[1] == "string" && obj[1].length > 1) {
-        if ((0, string_utils_1.isLetterOrDigit)(obj[0].charCodeAt(obj.length - 1))
-            || (0, string_utils_1.isLetterOrDigit)(obj[1].charCodeAt(0))) {
+        const c1 = obj[0].charCodeAt(obj[0].length - 1);
+        const c2 = obj[1].charCodeAt(0);
+        if ((0, string_utils_1.isLetterOrDigit)(c1) || allowedInEscape.includes(c1) || (0, string_utils_1.isLetterOrDigit)(c2) || allowedInEscape.includes(c2)) {
             opening = "{{";
             closing = "}}";
-            return "Invalid escape strings: inner-most character must not be letter or digits";
+            return "Invalid escape strings: inner-most characters must be different from letters, digits, or . _";
         }
         opening = obj[0];
         closing = obj[1];
@@ -149,8 +153,6 @@ function clearAll() {
     console.log("Everything cleared");
 }
 exports.clearAll = clearAll;
-const allowedInEscape = (0, string_utils_1.charCodesOf)("._");
-const allowedInUrl = (0, string_utils_1.charCodesOf)("./_ #$");
 function getSuggestions(doc, pos) {
     const item = mapHTML.get(doc.uri.fsPath);
     if (!item || !item.valid)
@@ -172,15 +174,10 @@ function getSuggestions(doc, pos) {
     }
     else {
         console.log("Suggest snippet");
-        const ns = (0, string_utils_1.lastNonSpace)(line, col - 1);
-        console.log(ns, col);
-        if (!(0, string_utils_1.matchStringBefore)(opening, line, ns))
+        if (!(0, string_utils_1.matchStringBefore)(opening, line, col - 1))
             return null;
-        const item = new vscode_1.CompletionItem("translated text reference", vscode_1.CompletionItemKind.Snippet);
-        if (ns !== col - 1)
-            item.range = new vscode_1.Range(pos.line, ns, pos.line, col + 1);
-        //item.range = new Range(pos.line, ns-opening.length, pos.line, col);
-        item.insertText = new vscode_1.SnippetString("${0:textID}" + closing);
+        const item = new vscode_1.CompletionItem("translated item ", vscode_1.CompletionItemKind.Snippet);
+        item.insertText = new vscode_1.SnippetString("${0:textID}").appendText(closing);
         return [item];
     }
 }
@@ -227,4 +224,16 @@ function diagnose(doc, collection) {
     collection.set(doc.uri, diagnostics);
 }
 exports.diagnose = diagnose;
+function updateDiagnostics(ev, collection) {
+    const uri = ev.document.uri;
+    const item = mapHTML.get(uri.fsPath);
+    if (!item || !item.valid)
+        return;
+    let range;
+    const len = ev.contentChanges.length;
+    for (var i = 0; i < len; i++) {
+        range = ev.contentChanges[i].range;
+    }
+}
+exports.updateDiagnostics = updateDiagnostics;
 //# sourceMappingURL=data.js.map
