@@ -249,21 +249,17 @@ function updateDiagnostics(ev, collection) {
     let firstLine = ev.contentChanges[len - 1].range.start.line;
     let lastOld = 0;
     // if there is valid old diagnostic retrieve it till the first changed line
-    console.log(`oldSize=${oldSize}, firstLine=${firstLine}`);
+    // console.log(`previous-diagnostics-size=${oldSize}, first-line-change=${firstLine}`);
     // changes ordered in line decreasing order
     for (i = 0; i < oldSize && old[i].range.start.line < firstLine; i++)
         diagnostics.push(old[i]);
     lastOld = i;
-    if (len > 1) {
-        for (i = firstLine; i < doc.lineCount; i++)
-            diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
-    }
-    else {
+    if (len == 1) {
         const change = ev.contentChanges[0];
         const insertedLines = (0, string_utils_1.countNewLines)(change.text);
         const removedLines = change.range.end.line - change.range.start.line;
         const delta = insertedLines - removedLines;
-        console.log("Only one change, delta = " + delta);
+        console.log(" > one change: line-delta=" + delta);
         for (i = 0; i <= insertedLines; i++) {
             diagnoseLine(doc.lineAt(firstLine + i).text, firstLine + i, item.keys, diagnostics);
         }
@@ -276,6 +272,27 @@ function updateDiagnostics(ev, collection) {
         else
             while (i < oldSize)
                 diagnostics.push(old[i++]);
+    }
+    else {
+        if (len == 2) {
+            // when a new line first text is empty, the second starts with \r\n and continues with white spaces
+            const t1 = ev.contentChanges[0].text;
+            const t2 = ev.contentChanges[1].text;
+            if ((!t1 && t2.startsWith("\r\n") && (0, string_utils_1.firstNonSpace)(t2, 2) === t2.length) ||
+                (!t2 && t1.startsWith("\r\n") && (0, string_utils_1.firstNonSpace)(t1, 2) === t1.length)) {
+                console.log(" > new line");
+                for (i = lastOld; i < oldSize; i++)
+                    diagnostics.push(shiftDiagnostic(old[i], 1));
+            }
+            else {
+                for (i = firstLine; i < doc.lineCount; i++)
+                    diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
+            }
+        }
+        else {
+            for (i = firstLine; i < doc.lineCount; i++)
+                diagnoseLine(doc.lineAt(i).text, i, item.keys, diagnostics);
+        }
     }
     collection.set(uri, diagnostics);
 }

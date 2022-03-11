@@ -17,7 +17,6 @@ For example if there is an image subfolder under your extension project workspac
 
 ### Work in progress
 
-* Custom escape characters
 * Hhtml file compilation
 * Some way to refer to a language name and identifier
 
@@ -37,7 +36,7 @@ The behaviour of this extension depends on some settings.
 
 * `html-translator.files`: array of objects specifying source html and translated texts json files.
 * `html-translator.languages`: array of string language identifiers for which translate.
-* `html-translato.escape-strings`: pair of opening and closing strings used to escape from regular html and provide suggestions; default is ["{{", "}}"].
+* `html-translato.escape-strings`: pair of opening and closing strings used to escape from regular html and provide suggestions; default is `["{{", "}}"]`.
 
 ## Known Issues
 
