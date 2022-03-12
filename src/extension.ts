@@ -2,7 +2,11 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-import { parseConfig, clearAll, updateTranslationsFrom, getSuggestions, diagnose, updateDiagnostics } from "./data";
+import { getSuggestions, diagnose, updateDiagnostics } from "./diagnostics";
+import { updateTranslationsFrom } from './traslation-json';
+import { clearTranslationItems } from "./data";
+import parseConfig from './config-parser';
+
 
 let disposables: vscode.Disposable | null;
 
@@ -12,7 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("HTML translator");
 
 	function stop() {
-		clearAll();
+		clearTranslationItems()
 		if(disposables) {
 			outputChannel.appendLine("Disposing autocompletition and diagnostrics");
 			disposables.dispose();

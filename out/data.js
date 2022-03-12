@@ -1,15 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateDiagnostics = exports.diagnose = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = void 0;
+exports.updateDiagnostics = exports.diagnose = exports.getSuggestions = exports.clearAll = exports.updateTranslationsFrom = exports.parseConfig = exports.addTranslationDataItem = exports.root = exports.defaultRegExp = exports.completeSnippet = exports.closing = exports.opening = void 0;
 const vscode_1 = require("vscode");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
 const string_utils_1 = require("./string-utils");
-let opening = "{{";
-let closing = "}}";
-let completeSnippet;
-const defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
-const root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
+exports.opening = "{{";
+exports.closing = "}}";
+exports.defaultRegExp = /{{\s*([a-zA-Z._\-]*)\s*}}/;
+exports.root = vscode_1.workspace.workspaceFolders ? vscode_1.workspace.workspaceFolders[0].uri.fsPath : "";
 const allowedInEscape = (0, string_utils_1.charCodesOf)("._");
 const allowedInUrl = (0, string_utils_1.charCodesOf)("./_ #$");
 var CODES;
@@ -23,6 +22,12 @@ let langs;
 let data;
 const mapHTML = new Map();
 const mapJSON = new Map();
+function addTranslationDataItem(item) {
+    mapHTML.set(item.htmlPath, item);
+    mapJSON.set(item.jsonPath, item);
+    data.push(item);
+}
+exports.addTranslationDataItem = addTranslationDataItem;
 function recursiveParse(obj, baseKey = '') {
     const res = [];
     var value;
@@ -50,14 +55,14 @@ async function parseConfigFilesItem(obj, index) {
         return "File #" + index + " is not an object";
     if (typeof obj.source !== "string" || typeof obj.texts !== "string")
         return "Files pair #" + index + " must contain string values for source and texts";
-    let htmlPath = (0, path_1.join)(root, obj.source);
+    let htmlPath = (0, path_1.join)(exports.root, obj.source);
     try {
         await (0, promises_1.access)(htmlPath);
     }
     catch {
         return "Could not open " + htmlPath;
     }
-    let jsonPath = (0, path_1.join)(root, obj.texts);
+    let jsonPath = (0, path_1.join)(exports.root, obj.texts);
     return await (0, promises_1.readFile)(jsonPath, { encoding: "utf-8" })
         .then(parseTranslationDocumentText)
         .then(keys => {
@@ -76,8 +81,8 @@ async function parseConfigFilesItem(obj, index) {
  * @returns error string or null
  */
 function parseEscapes(obj) {
-    opening = "{{";
-    closing = "}}";
+    exports.opening = "{{";
+    exports.closing = "}}";
     if (!obj)
         return null;
     let error = null;
@@ -90,14 +95,14 @@ function parseEscapes(obj) {
             error = "Invalid escape strings: inner-most characters must be different from letters, digits, or . _";
         }
         else {
-            opening = obj[0];
-            closing = obj[1];
+            exports.opening = obj[0];
+            exports.closing = obj[1];
         }
     }
     else {
         error = "Invalid escape strings: expected array of two string with length > 2, rolling back to default {{ }}";
     }
-    completeSnippet = new vscode_1.SnippetString().appendText(opening).appendTabstop(0).appendText(closing);
+    exports.completeSnippet = new vscode_1.SnippetString().appendText(exports.opening).appendTabstop(0).appendText(exports.closing);
     return error;
 }
 /**
@@ -105,7 +110,7 @@ function parseEscapes(obj) {
  * @returns promise that resolves to a list of error messages, is any
  */
 async function parseConfig() {
-    if (!root)
+    if (!exports.root)
         return null;
     clearAll();
     let config = vscode_1.workspace.getConfiguration("html-translator");
@@ -158,9 +163,9 @@ function getSuggestions(doc, pos) {
         return null;
     const line = doc.lineAt(pos.line).text;
     const col = pos.character;
-    if ((0, string_utils_1.matchStringAfter)(closing, line, (0, string_utils_1.firstNonSpace)(line, col))) {
+    if ((0, string_utils_1.matchStringAfter)(exports.closing, line, (0, string_utils_1.firstNonSpace)(line, col))) {
         const s = (0, string_utils_1.getTypedBefore)(line, col, allowedInEscape);
-        if (!s || !(0, string_utils_1.matchStringBefore)(opening, line, (0, string_utils_1.lastNonSpace)(line, col - s.length - 1)))
+        if (!s || !(0, string_utils_1.matchStringBefore)(exports.opening, line, (0, string_utils_1.lastNonSpace)(line, col - s.length - 1)))
             return null;
         console.log("Load suggestions");
         const dot_index = s.lastIndexOf(".");
@@ -172,11 +177,11 @@ function getSuggestions(doc, pos) {
             : matches.map(v => new vscode_1.CompletionItem(v.substring(dot_index + 1), vscode_1.CompletionItemKind.EnumMember));
     }
     else {
-        if (!(0, string_utils_1.matchStringBefore)(opening, line, col - 1))
+        if (!(0, string_utils_1.matchStringBefore)(exports.opening, line, col - 1))
             return null;
         console.log("Suggest snippet");
         const item = new vscode_1.CompletionItem("translated item ", vscode_1.CompletionItemKind.Snippet);
-        item.insertText = new vscode_1.SnippetString("${0:textID}").appendText(closing);
+        item.insertText = new vscode_1.SnippetString("${0:textID}").appendText(exports.closing);
         return [item];
     }
 }
@@ -203,13 +208,13 @@ function diagnoseLine(line, index, keys, diagnostics) {
     var start;
     var stop;
     var piece;
-    var site = line.indexOf(opening);
+    var site = line.indexOf(exports.opening);
     while (site !== -1) {
-        start = (0, string_utils_1.firstNonSpace)(line, site + opening.length);
+        start = (0, string_utils_1.firstNonSpace)(line, site + exports.opening.length);
         stop = (0, string_utils_1.firstNonTyping)(line, start, allowedInEscape);
         site = (0, string_utils_1.firstNonSpace)(line, stop);
-        if ((0, string_utils_1.matchStringAfter)(closing, line, site)) {
-            site += closing.length;
+        if ((0, string_utils_1.matchStringAfter)(exports.closing, line, site)) {
+            site += exports.closing.length;
             if (start === stop)
                 diagnostics.push(createDiagEmpty(index, start));
             else {
@@ -218,7 +223,7 @@ function diagnoseLine(line, index, keys, diagnostics) {
                     diagnostics.push(createDiagNonExistent(index, start, stop, piece));
             }
         }
-        site = line.indexOf(opening, site);
+        site = line.indexOf(exports.opening, site);
     }
 }
 function diagnose(doc, collection) {
